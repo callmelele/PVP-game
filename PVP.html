@@ -1,0 +1,150 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phaser Scaled Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
+    <link rel="stylesheet" href="MyGame.css">
+</head>
+<body>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+
+    <script>
+        var config = {
+            type: Phaser.AUTO,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 900 },
+                    debug: false
+                }
+            },
+            scale: {
+                mode: Phaser.Scale.RESIZE,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        var socket;
+        var game = new Phaser.Game(config);
+        var player1;
+        var player2;
+        var platforms;
+        var sky;
+        var cursors;
+
+        function preload() {
+            this.load.image('platform', 'assets/istockphoto-1434556100-1024x1024-removebg-preview.png');
+            this.load.image('sky', 'assets/sky.jpg');
+            this.load.spritesheet('pen_walk', 'assets/penguin_walk.png', { frameWidth: 110, frameHeight: 110 });
+            this.load.spritesheet('pen_jump', 'assets/penguin_jump.png', { frameWidth: 110, frameHeight: 99 });
+        }
+
+        function create() {
+            socket = new WebSocket('ws://localhost:8080');
+
+            socket.onopen = function(event) {
+                console.log("WebSocket connection established");
+            };
+
+            socket.onmessage = function(event) {
+                var data = JSON.parse(event.data);
+                if (data.type === "move") {
+                    updatePlayerPosition(data.id, data.x, data.y);
+                }
+            };
+
+            sky = this.add.tileSprite(0, 0, window.innerWidth, window.innerHeight, 'sky');
+            sky.setOrigin(0, 0);
+            sky.setScrollFactor(0);
+
+            platforms = this.physics.add.staticGroup();
+            let platform2 = platforms.create(950, 650, 'platform');
+            platform2.setDisplaySize(1500, 100).refreshBody();
+
+            player1 = this.physics.add.sprite(350, 450, 'pen_walk');
+            player1.setCollideWorldBounds(true);
+            player1.setScale(0.8);
+            this.physics.add.collider(player1, platforms);
+
+            player2 = this.physics.add.sprite(650, 450, 'pen_walk');
+            player2.setCollideWorldBounds(true);
+            player2.setScale(0.8);
+            this.physics.add.collider(player2, platforms);
+
+            this.anims.create({
+                key: 'walk',
+                frames: this.anims.generateFrameNumbers('pen_walk', { start: 0, end: 4 }),
+                frameRate: 20,
+                repeat: -1
+            });
+
+            this.anims.create({
+                key: "jump",
+                frames: this.anims.generateFrameNumbers('pen_jump', { start: 0, end: 4 }), 
+                frameRate: 1, 
+            });
+
+            cursors = this.input.keyboard.addKeys({
+                up: Phaser.Input.Keyboard.KeyCodes.W,
+                left: Phaser.Input.Keyboard.KeyCodes.A,
+                down: Phaser.Input.Keyboard.KeyCodes.S,
+                right: Phaser.Input.Keyboard.KeyCodes.D
+            });
+
+            this.physics.world.setBounds(0, 0, 2000, window.innerHeight);
+        }
+
+        function update() {
+            sky.tilePositionX += 0.4;
+
+            // Player 1 controls
+            if (cursors.left.isDown && player1.body.touching.down) {
+                player1.setVelocityX(-160);
+                socket.send(JSON.stringify({ type: "move", id: "player1", x: player1.x - 160, y: player1.y }));
+                player1.anims.play("walk", true);
+                player1.flipX = true;
+            } else if (cursors.right.isDown && player1.body.touching.down) {
+                player1.setVelocityX(160);
+                socket.send(JSON.stringify({ type: "move", id: "player1", x: player1.x + 160, y: player1.y }));
+                player1.anims.play("walk", true);
+                player1.flipX = false;
+            } else if(player1.body.touching.down) {
+                player1.setVelocityX(0);
+                player1.anims.play("idle");
+            }
+
+            if (cursors.up.isDown && player1.body.touching.down) {
+                player1.setVelocityY(-500);
+                socket.send(JSON.stringify({ type: "jump", id: "player1", x: player1.x, y: player1.y }));
+                player1.anims.play("jump", true);
+            }
+        }
+
+        function updatePlayerPosition(id, x, y) {
+            if (id === "player1") {
+                player1.setPosition(x, y);
+            } else if (id === "player2") {
+                player2.setPosition(x, y);
+            }
+        }
+
+        window.addEventListener('resize', function () {
+            game.scale.resize(window.innerWidth, window.innerHeight);
+            sky.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
