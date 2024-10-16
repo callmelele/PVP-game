@@ -4,7 +4,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phaser Scaled Game</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
-    <link rel="stylesheet" href="MyGame.css">
 </head>
 <body>
     <style>
@@ -39,11 +38,9 @@
 
         var socket;
         var game = new Phaser.Game(config);
-        var player1;
-        var player2;
-        var platforms;
-        var sky;
-        var cursors;
+        var player1, player2, myPlayer;
+        var platforms, sky, cursors;
+        var playerId; 
 
         function preload() {
             this.load.image('platform', 'assets/istockphoto-1434556100-1024x1024-removebg-preview.png');
@@ -53,18 +50,30 @@
         }
 
         function create() {
-            socket = new WebSocket('ws://localhost:8080');
+            socket = new WebSocket('wss://10.19.0.16:3000');
 
             socket.onopen = function(event) {
                 console.log("WebSocket connection established");
             };
 
             socket.onmessage = function(event) {
-                var data = JSON.parse(event.data);
-                if (data.type === "move") {
-                    updatePlayerPosition(data.id, data.x, data.y);
-                }
-            };
+            var data = JSON.parse(event.data);
+
+            if (data.type === "init") {
+                playerId = data.id;
+                console.log("You are player: " + playerId);
+            } else if (data.type === "move") {
+                updatePlayerPosition(data.id, data.x, data.y);
+            }
+        };
+
+        function updatePlayerPosition(id, x, y) {
+            if (id === "player1") {
+                player1.setPosition(x, y);
+            } else if (id === "player2") {
+                player2.setPosition(x, y);
+            }
+        }
 
             sky = this.add.tileSprite(0, 0, window.innerWidth, window.innerHeight, 'sky');
             sky.setOrigin(0, 0);
@@ -84,6 +93,11 @@
             player2.setScale(0.8);
             this.physics.add.collider(player2, platforms);
 
+            this.anims.create({
+                key: "idle",
+                frames: this.anims.generateFrameNumbers('pen_walk', { start: 1, end: 1 }),
+            })
+            
             this.anims.create({
                 key: 'walk',
                 frames: this.anims.generateFrameNumbers('pen_walk', { start: 0, end: 4 }),
@@ -110,34 +124,38 @@
         function update() {
             sky.tilePositionX += 0.4;
 
-            // Player 1 controls
-            if (cursors.left.isDown && player1.body.touching.down) {
-                player1.setVelocityX(-160);
-                socket.send(JSON.stringify({ type: "move", id: "player1", x: player1.x - 160, y: player1.y }));
-                player1.anims.play("walk", true);
-                player1.flipX = true;
-            } else if (cursors.right.isDown && player1.body.touching.down) {
-                player1.setVelocityX(160);
-                socket.send(JSON.stringify({ type: "move", id: "player1", x: player1.x + 160, y: player1.y }));
-                player1.anims.play("walk", true);
-                player1.flipX = false;
-            } else if(player1.body.touching.down) {
-                player1.setVelocityX(0);
-                player1.anims.play("idle");
-            }
-
-            if (cursors.up.isDown && player1.body.touching.down) {
-                player1.setVelocityY(-500);
-                socket.send(JSON.stringify({ type: "jump", id: "player1", x: player1.x, y: player1.y }));
-                player1.anims.play("jump", true);
+            if (playerId === 'player1') {
+                handlePlayerControls(player1, 'player1');
+            } else if (playerId === 'player2') {
+                handlePlayerControls(player2, 'player2');
             }
         }
 
-        function updatePlayerPosition(id, x, y) {
-            if (id === "player1") {
-                player1.setPosition(x, y);
-            } else if (id === "player2") {
-                player2.setPosition(x, y);
+        function handlePlayerControls(player, playerName) {
+            let moved = false; 
+            if (cursors.left.isDown && player.body.touching.down) {
+                player.setVelocityX(-160);
+                moved = true;
+                player.anims.play("walk", true);
+                player.flipX = true;
+            } else if (cursors.right.isDown && player.body.touching.down) {
+                player.setVelocityX(160);
+                moved = true;
+                player.anims.play("walk", true);
+                player.flipX = false;
+            } else if (player.body.touching.down) {
+                player.setVelocityX(0);
+                player.anims.play("idle");
+            }
+
+            if (cursors.up.isDown && player.body.touching.down) {
+                player.setVelocityY(-500);
+                moved = true;
+                player.anims.play("jump", true);
+            }
+
+            if (moved) {
+                socket.send(JSON.stringify({ type: "move", id: playerName, x: player.x, y: player.y }));
             }
         }
 
@@ -146,5 +164,6 @@
             sky.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
+
 </body>
 </html>

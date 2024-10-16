@@ -1,19 +1,26 @@
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 8080 });
+const wss = new WebSocket.Server({ port: 3000 });
 
+let clientCount = 0;
 const clients = [];
 
 wss.on('connection', function connection(ws) {
-    clients.push(ws);
-    console.log(`New client connected. Total clients: ${clients.length}`);
+    const playerId = `player${++clientCount}`;
+    ws.playerId = playerId;
 
-    ws.send('Connection established with server');
+    clients.push(ws);
+    console.log(`New client connected as ${playerId}. Total clients: ${clients.length}`);
+
+    ws.send(JSON.stringify({ type: 'init', id: playerId }));
 
     ws.on('message', function incoming(message) {
         console.log('received: %s', message);
+
+        const data = JSON.parse(message);
+
         clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(`Client says: ${message}`);
+            if (client.readyState === WebSocket.OPEN && client !== ws) {
+                client.send(message);
             }
         });
     });
@@ -27,4 +34,4 @@ wss.on('connection', function connection(ws) {
     });
 });
 
-console.log('WebSocket server is listening on ws://localhost:8080');
+console.log('WebSocket server is listening on ws://localhost:3000');
