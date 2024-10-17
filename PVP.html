@@ -14,7 +14,7 @@
     </style>
 
     <script>
-        var config = {
+        const config = {
             type: Phaser.AUTO,
             width: window.innerWidth,
             height: window.innerHeight,
@@ -22,7 +22,8 @@
                 default: 'arcade',
                 arcade: {
                     gravity: { y: 900 },
-                    debug: false
+                    debug: false,
+                    fps: 20
                 }
             },
             scale: {
@@ -30,17 +31,17 @@
                 autoCenter: Phaser.Scale.CENTER_BOTH
             },
             scene: {
-                preload: preload,
-                create: create,
-                update: update
+                preload,
+                create,
+                update
             }
         };
 
-        var socket;
-        var game = new Phaser.Game(config);
-        var player1, player2, myPlayer;
-        var platforms, sky, cursors;
-        var playerId; 
+        let socket;
+        const game = new Phaser.Game(config);
+        let player1, player2, platforms, sky, cursors;
+        let playerId; 
+        let positionUpdateInterval; 
 
         function preload() {
             this.load.image('platform', 'assets/istockphoto-1434556100-1024x1024-removebg-preview.png');
@@ -50,120 +51,137 @@
         }
 
         function create() {
-            socket = new WebSocket('wss://10.19.0.16:3000');
+            setupWebSocket.call(this);
+            setupBackground.call(this);
+            setupPlatforms.call(this);
+            setupPlayers.call(this);
+            setupAnimations.call(this);
+            setupControls.call(this);
+            setupPositionUpdate.call(this);
+        }
 
-            socket.onopen = function(event) {
-                console.log("WebSocket connection established");
+        function setupWebSocket() {
+            socket = new WebSocket('ws://localhost:3000');
+            socket.onopen = () => console.log("WebSocket connection established");
+            socket.onmessage = handleWebSocketMessage.bind(this);
+        }
+
+        function handleWebSocketMessage(event) {
+            const reader = new FileReader();
+            const dataHandler = (text) => {
+                const data = JSON.parse(text);
+                handleData.call(this, data);
             };
 
-            socket.onmessage = function(event) {
-            var data = JSON.parse(event.data);
-
-            if (data.type === "init") {
-                playerId = data.id;
-                console.log("You are player: " + playerId);
-            } else if (data.type === "move") {
-                updatePlayerPosition(data.id, data.x, data.y);
-            }
-        };
-
-        function updatePlayerPosition(id, x, y) {
-            if (id === "player1") {
-                player1.setPosition(x, y);
-            } else if (id === "player2") {
-                player2.setPosition(x, y);
+            if (event.data instanceof Blob) {
+                reader.onload = () => dataHandler(reader.result);
+                reader.readAsText(event.data);
+            } else {
+                dataHandler(event.data);
             }
         }
 
-            sky = this.add.tileSprite(0, 0, window.innerWidth, window.innerHeight, 'sky');
-            sky.setOrigin(0, 0);
-            sky.setScrollFactor(0);
+        function setupBackground() {
+            sky = this.add.tileSprite(0, 0, window.innerWidth, window.innerHeight, 'sky').setOrigin(0, 0).setScrollFactor(0);
+        }
 
+        function setupPlatforms() {
             platforms = this.physics.add.staticGroup();
-            let platform2 = platforms.create(950, 650, 'platform');
-            platform2.setDisplaySize(1500, 100).refreshBody();
+            let platform2 = platforms.create(950, 650, 'platform').setDisplaySize(1500, 100).refreshBody();
+        }
 
-            player1 = this.physics.add.sprite(350, 450, 'pen_walk');
-            player1.setCollideWorldBounds(true);
-            player1.setScale(0.8);
-            this.physics.add.collider(player1, platforms);
+        function setupPlayers() {
+            player1 = createPlayer.call(this, 350, 450);
+            player2 = createPlayer.call(this, 1550, 450);
+        }
 
-            player2 = this.physics.add.sprite(650, 450, 'pen_walk');
-            player2.setCollideWorldBounds(true);
-            player2.setScale(0.8);
-            this.physics.add.collider(player2, platforms);
+        function createPlayer(x, y) {
+            const player = this.physics.add.sprite(x, y, 'pen_walk').setCollideWorldBounds(true).setScale(0.8);
+            this.physics.add.collider(player, platforms);
+            return player;
+        }
 
-            this.anims.create({
-                key: "idle",
-                frames: this.anims.generateFrameNumbers('pen_walk', { start: 1, end: 1 }),
-            })
-            
-            this.anims.create({
-                key: 'walk',
-                frames: this.anims.generateFrameNumbers('pen_walk', { start: 0, end: 4 }),
-                frameRate: 20,
-                repeat: -1
-            });
+        function setupAnimations() {
+            this.anims.create({ key: "idle", frames: this.anims.generateFrameNumbers('pen_walk', { start: 1, end: 1 }) });
+            this.anims.create({ key: 'walk', frames: this.anims.generateFrameNumbers('pen_walk', { start: 0, end: 4 }), frameRate: 20, repeat: -1 });
+            this.anims.create({ key: "jump", frames: this.anims.generateFrameNumbers('pen_jump', { start: 0, end: 4 }), frameRate: 1 });
+        }
 
-            this.anims.create({
-                key: "jump",
-                frames: this.anims.generateFrameNumbers('pen_jump', { start: 0, end: 4 }), 
-                frameRate: 1, 
-            });
-
+        function setupControls() {
             cursors = this.input.keyboard.addKeys({
                 up: Phaser.Input.Keyboard.KeyCodes.W,
                 left: Phaser.Input.Keyboard.KeyCodes.A,
                 down: Phaser.Input.Keyboard.KeyCodes.S,
                 right: Phaser.Input.Keyboard.KeyCodes.D
             });
-
             this.physics.world.setBounds(0, 0, 2000, window.innerHeight);
         }
 
-        function update() {
-            sky.tilePositionX += 0.4;
+        function setupPositionUpdate() {
+            positionUpdateInterval = setInterval(() => {
+                if (playerId) {
+                    sendPlayerPosition(playerId === 'player1' ? player1 : player2, playerId);
+                }
+            }, 200);
+        }
 
-            if (playerId === 'player1') {
-                handlePlayerControls(player1, 'player1');
-            } else if (playerId === 'player2') {
-                handlePlayerControls(player2, 'player2');
+        function handleData(data) {
+            if (data.type === "init") {
+                playerId = data.id;
+                console.log("You are player: " + playerId);
+            } else if (data.type === "move") {
+                updatePlayerPosition(data.id, data.x, data.y);
             }
         }
 
-        function handlePlayerControls(player, playerName) {
-            let moved = false; 
-            if (cursors.left.isDown && player.body.touching.down) {
-                player.setVelocityX(-160);
-                moved = true;
-                player.anims.play("walk", true);
-                player.flipX = true;
-            } else if (cursors.right.isDown && player.body.touching.down) {
-                player.setVelocityX(160);
-                moved = true;
-                player.anims.play("walk", true);
-                player.flipX = false;
+        function updatePlayerPosition(id, x, y) {
+            if (id === "player1") {
+                player1.setPosition(Math.round(x), Math.round(y));
+            } else if (id === "player2") {
+                player2.setPosition(Math.round(x), Math.round(y));
+            }
+        }
+
+        function update() {
+            if (sky) {
+                sky.tilePositionX += 0.4; 
+                if (playerId) {
+                    handlePlayerControls(playerId === 'player1' ? player1 : player2);
+                }
+            }
+        }
+
+        function handlePlayerControls(player) {
+            if (cursors.left.isDown) {
+                player.setVelocityX(-160).anims.play("walk", true).flipX = true;
+                sendPlayerPosition(player, playerId); 
+            } else if (cursors.right.isDown) {
+                player.setVelocityX(160).anims.play("walk", true).flipX = false;
+                sendPlayerPosition(player, playerId); 
             } else if (player.body.touching.down) {
-                player.setVelocityX(0);
-                player.anims.play("idle");
+                player.setVelocityX(0).anims.play("idle");
+                sendPlayerPosition(player, playerId); 
             }
 
             if (cursors.up.isDown && player.body.touching.down) {
-                player.setVelocityY(-500);
-                moved = true;
-                player.anims.play("jump", true);
-            }
-
-            if (moved) {
-                socket.send(JSON.stringify({ type: "move", id: playerName, x: player.x, y: player.y }));
+                player.setVelocityY(-500).anims.play("jump");
+                sendPlayerPosition(player, playerId); 
             }
         }
 
-        window.addEventListener('resize', function () {
-            game.scale.resize(window.innerWidth, window.innerHeight);
-            sky.setSize(window.innerWidth, window.innerHeight);
-        });
-    </script>
+        function sendPlayerPosition(player, playerName) {
+            socket.send(JSON.stringify({ type: "move", id: playerName, x: Math.round(player.x), y: Math.round(player.y) }));
+        }
 
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                game.scale.resize(window.innerWidth, window.innerHeight);
+                sky.setSize(window.innerWidth, window.innerHeight);
+            }, 1000);
+        });
+
+        window.addEventListener('beforeunload', () => clearInterval(positionUpdateInterval));
+    </script>
 </body>
 </html>
