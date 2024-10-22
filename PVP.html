@@ -23,7 +23,7 @@
                 arcade: {
                     gravity: { y: 900 },
                     debug: false,
-                    fps: 20
+                    fps: 40
                 }
             },
             scale: {
@@ -39,6 +39,7 @@
 
         let socket;
         const game = new Phaser.Game(config);
+        let resizeTimeout;
         let player1, player2, platforms, sky, cursors;
         let playerId; 
         let positionUpdateInterval; 
@@ -111,7 +112,6 @@
             cursors = this.input.keyboard.addKeys({
                 up: Phaser.Input.Keyboard.KeyCodes.W,
                 left: Phaser.Input.Keyboard.KeyCodes.A,
-                down: Phaser.Input.Keyboard.KeyCodes.S,
                 right: Phaser.Input.Keyboard.KeyCodes.D
             });
             this.physics.world.setBounds(0, 0, 2000, window.innerHeight);
@@ -122,7 +122,7 @@
                 if (playerId) {
                     sendPlayerPosition(playerId === 'player1' ? player1 : player2, playerId);
                 }
-            }, 200);
+            }, 100);
         }
 
         function handleData(data) {
@@ -178,7 +178,7 @@
             resizeTimeout = setTimeout(() => {
                 game.scale.resize(window.innerWidth, window.innerHeight);
                 sky.setSize(window.innerWidth, window.innerHeight);
-            }, 1000);
+            }, 2000);
         });
 
         window.addEventListener('beforeunload', () => clearInterval(positionUpdateInterval));
